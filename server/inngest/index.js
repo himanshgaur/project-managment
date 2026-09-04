@@ -84,7 +84,7 @@ const syncWorkspaceCreation = inngest.createFunction(
         id: "sync-workspace-creation",
         triggers: [
             {
-                event: "clerk/workspace.created",
+                event: "clerk/organization.created",
             },
         ],
     },
@@ -168,7 +168,7 @@ const syncWorkspaceMemberCreation = inngest.createFunction(
         id: "sync-workspace-member-creation",
         triggers: [
             {
-                event: "clerk/organizationInvitation.accepted",
+                event: "clerk/organization_membership.created",
             },
         ],
     },
