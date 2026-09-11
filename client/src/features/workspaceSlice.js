@@ -3,16 +3,46 @@ import { dummyWorkspaces } from "../assets/assets";
 import {  createAsyncThunk } from "@reduxjs/toolkit";
 import api from "../configs/api";
 
-export const fetchWorkspaces = createAsyncThunk("workspace/fetchWorkspaces", async ({getToken}) => {
-    try{
-        const {data} = await api.get('/api/workspaces', {headers: {Authorization: `Bearer ${await getToken()}` }})
-        return data.workspaces || []
-    }catch(error){
-        console.error(error?.response?.data?.message || error.message);
-        return [];
+// export const fetchWorkspaces = createAsyncThunk("workspace/fetchWorkspaces", async ({getToken}) => {
+//     try{
+//         const {data} = await api.get('/api/workspaces', {headers: {Authorization: `Bearer ${await getToken()}` }})
+//         return data.workspaces || []
+//     }catch(error){
+//         console.error(error?.response?.data?.message || error.message);
+//         return [];
 
+//     }
+// });
+
+export const fetchWorkspaces = createAsyncThunk(
+    "workspace/fetchWorkspaces",
+    async ({ getToken }, { rejectWithValue }) => {
+        try {
+            const token = await getToken();
+
+            console.log("Fetching workspaces...");
+
+            const { data } = await api.get("/api/workspaces", {
+                headers: {
+                    Authorization: `Bearer ${token}`,
+                },
+            });
+
+            console.log("WORKSPACE API RESPONSE:", data);
+
+            return data.workspaces || [];
+        } catch (error) {
+            console.error(
+                "WORKSPACE API ERROR:",
+                error?.response?.data || error.message
+            );
+
+            return rejectWithValue(
+                error?.response?.data?.message || error.message
+            );
+        }
     }
-});
+);
 
 const initialState = {
     workspaces: [],

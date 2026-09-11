@@ -1,6 +1,8 @@
 
 import { Inngest } from "inngest";
 import prisma from "../configs/prisma.js";
+import sendEmail from "../configs/nodemailer.js";
+import { assign } from "nodemailer/lib/shared/index.js";
 
 // Create Inngest client
 export const inngest = new Inngest({
@@ -185,6 +187,161 @@ const syncWorkspaceMemberCreation = inngest.createFunction(
     }
 );
 
+//Inngest function to send email on task creation 
+const sendTaskAssignmentEmail = inngest.createFunction(
+    { id: "send-task-assignment-mail" },
+    { event: "app/task.assigned" },
+    async ({ event, step }) => {
+        const { taskId, origin } = event.data;
+
+        const task = await prisma.task.findUnique({
+            where: { id: taskId },
+            include: { assignee: true, project: true }
+        })
+
+        await sendEmail({
+            to: task.assignee.email,
+            subject: `New Task Assignment in ${task.project.name}`,
+            body: ` <div style="
+        max-width: 600px;
+        margin: 40px auto;
+        background-color: #ffffff;
+        border-radius: 10px;
+        padding: 30px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    ">
+
+        <h2 style="color: #333;">
+            Hi ${task.assignee.name},
+        </h2>
+
+        <p style="font-size: 16px; color: #555;">
+            You have been assigned a new task.
+        </p>
+
+        <div style="
+            background-color: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+        ">
+
+            <p style="margin: 0 0 10px;">
+                <strong>Task:</strong> ${task.title}
+            </p>
+
+            <p style="margin: 0;">
+                <strong>Due Date:</strong> 
+                ${new Date(task.due_date).toLocaleDateString()}
+            </p>
+
+        </div>
+
+        <a href="${origin}"
+           style="
+                display: inline-block;
+                padding: 12px 24px;
+                background-color: #007bff;
+                color: #ffffff;
+                text-decoration: none;
+                border-radius: 6px;
+                font-size: 15px;
+           ">
+            View Task
+        </a>
+
+        <p style="
+            margin-top: 30px;
+            font-size: 13px;
+            color: #888;
+        ">
+            Please review the task and complete it before the due date.
+        </p>
+
+    </div>
+`
+        })
+        if(new Date(task.due_date).toLocaleDateString() !== new Date().toLocaleDateString()){
+            await step.sleepUntil('wait-for-the-due-date', new Date(task.due_date));
+            await step.run('check-if-task-is-completed', async () => {
+                const task = await prisma.task.findUnique({
+                    where: {id: taskId},
+                    include: {assignee: true, project: true}
+                })
+
+                if(!task) return;
+
+                if(task.status !== "DONE"){
+                    await step.run('send-task-reminder-email',async () => {
+                        await sendEmail({
+                            to: task.assignee.email,
+                            subject: `Remider for ${task.project.name}`, 
+                            body: `<div style="
+        max-width: 600px;
+        margin: 40px auto;
+        background-color: #ffffff;
+        border-radius: 10px;
+        padding: 30px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    ">
+
+        <h2 style="color: #333;">
+            Hi ${task.assignee.name},
+        </h2>
+
+        <p style="font-size: 16px; color: #555;">
+            You have been assigned a new task.
+        </p>
+
+        <div style="
+            background-color: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+        ">
+
+            <p style="margin: 0 0 10px;">
+                <strong>Task:</strong> ${task.title}
+            </p>
+
+            <p style="margin: 0;">
+                <strong>Due Date:</strong> 
+                ${new Date(task.due_date).toLocaleDateString()}
+            </p>
+
+        </div>
+
+        <a href="${origin}"
+           style="
+                display: inline-block;
+                padding: 12px 24px;
+                background-color: #007bff;
+                color: #ffffff;
+                text-decoration: none;
+                border-radius: 6px;
+                font-size: 15px;
+           ">
+            View Task
+        </a>
+
+        <p style="
+            margin-top: 30px;
+            font-size: 13px;
+            color: #888;
+        ">
+            Please review the task and complete it before the due date.
+        </p>
+
+    </div>`
+                        })
+                    })
+                }
+            })
+        }
+    }
+)
+
+
 // Export Inngest functions
 export const functions = [
     syncUserCreation,
@@ -193,5 +350,6 @@ export const functions = [
     syncWorkspaceCreation,
     syncWorkspaceUpdation,
     syncWorkspaceDeletion,
-    syncWorkspaceMemberCreation
+    syncWorkspaceMemberCreation,
+    sendTaskAssignmentEmail
 ];
