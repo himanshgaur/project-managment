@@ -1,5 +1,5 @@
 import { FolderOpen, CheckCircle, Users, AlertTriangle } from "lucide-react";
-import { useEffect, useState } from "react";
+import { createElement, useEffect, useState } from "react";
 import { useSelector } from "react-redux";
 
 export default function StatsGrid() {
@@ -53,24 +53,24 @@ export default function StatsGrid() {
     useEffect(() => {
         if (currentWorkspace) {
             setStats({
-                totalProjects: currentWorkspace.projects.length,
-                activeProjects: currentWorkspace.projects.filter(
+                totalProjects: currentWorkspace.projects?.length || 0,
+                activeProjects: (currentWorkspace.projects || []).filter(
                     (p) => p.status !== "CANCELLED" && p.status !== "COMPLETED"
                 ).length,
-                completedProjects: currentWorkspace.projects
+                completedProjects: (currentWorkspace.projects || [])
                     .filter((p) => p.status === "COMPLETED")
                     .reduce((acc, project) => acc + project.tasks.length, 0),
-                myTasks: currentWorkspace.projects.reduce(
+                myTasks: (currentWorkspace.projects || []).reduce(
                     (acc, project) =>
                         acc +
-                        project.tasks.filter(
-                            (t) => t.assignee?.email === currentWorkspace.owner.email
+                        (project.tasks || []).filter(
+                            (t) => t.assignee?.email === currentWorkspace.owner?.email
                         ).length,
                     0
                 ),
-                overdueIssues: currentWorkspace.projects.reduce(
+                overdueIssues: (currentWorkspace.projects || []).reduce(
                     (acc, project) =>
-                        acc + project.tasks.filter((t) => t.due_date < new Date()).length,
+                        acc + (project.tasks || []).filter((t) => t.due_date < new Date()).length,
                     0
                 ),
             });
@@ -98,7 +98,7 @@ export default function StatsGrid() {
                                     )}
                                 </div>
                                 <div className={`p-3 rounded-xl ${bgColor} bg-opacity-20`}>
-                                    <Icon size={20} className={textColor} />
+                                    {createElement(Icon, { size: 20, className: textColor })}
                                 </div>
                             </div>
                         </div>

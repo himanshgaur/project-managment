@@ -25,7 +25,7 @@ const RecentActivity = () => {
 
         if (!currentWorkspace) return;
 
-        const tasks = currentWorkspace.projects.flatMap((project) => project.tasks.map((task) => task));
+        const tasks = (currentWorkspace.projects || []).flatMap((project) => project.tasks || []);
         setTasks(tasks);
     };
 
@@ -65,17 +65,17 @@ const RecentActivity = () => {
                                                     {task.title}
                                                 </h4>
                                                 <span className={`ml-2 px-2 py-1 rounded text-xs ${statusColors[task.status] || "bg-zinc-300 text-zinc-700 dark:bg-zinc-700 dark:text-zinc-300"}`}>
-                                                    {task.status.replace("_", " ")}
+                                                    {(task.status || "TODO").replace("_", " ")}
                                                 </span>
                                             </div>
                                             <div className="flex items-center gap-3 text-xs text-zinc-500 dark:text-zinc-400">
-                                                <span className="capitalize">{task.type.toLowerCase()}</span>
+                                                <span className="capitalize">{(task.type || "TASK").toLowerCase()}</span>
                                                 {task.assignee && (
                                                     <div className="flex items-center gap-1">
                                                         <div className="w-4 h-4 bg-zinc-300 dark:bg-zinc-700 rounded-full flex items-center justify-center text-[10px] text-zinc-800 dark:text-zinc-200">
-                                                            {task.assignee.name[0].toUpperCase()}
+                                                            {(task.assignee.name || "U")[0].toUpperCase()}
                                                         </div>
-                                                        {task.assignee.name}
+                                                        {task.assignee.name && task.assignee.name !== "User" ? task.assignee.name : task.assignee.email}
                                                     </div>
                                                 )}
                                                 <span>

@@ -1,9 +1,18 @@
 import { useState } from "react";
 import { Calendar as CalendarIcon } from "lucide-react";
-import { useSelector } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
 import { format } from "date-fns";
+import { useAuth } from "@clerk/react";
+import api from "../configs/api"
+import toast from "react-hot-toast";
+import {addTask} from "../features/workspaceSlice.js"
 
 export default function CreateTaskDialog({ showCreateTask, setShowCreateTask, projectId }) {
+
+    const {getToken} = useAuth()
+    const dispatch = useDispatch()
+
+
     const currentWorkspace = useSelector((state) => state.workspace?.currentWorkspace || null);
     const project = currentWorkspace?.projects.find((p) => p.id === projectId);
     const teamMembers = project?.members || [];
@@ -21,6 +30,33 @@ export default function CreateTaskDialog({ showCreateTask, setShowCreateTask, pr
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+
+        if (!formData.assigneeId) {
+            toast.error("Please select an assignee");
+            return;
+        }
+
+        setIsSubmitting(true)
+        try{
+            const{data} = await api.post('/api/tasks', {...formData, workspaceId: currentWorkspace.id, projectId},{headers: {Authorization: `Bearer ${await getToken()}`}})
+            setShowCreateTask(false)
+            setFormData({
+                title: "",
+                description: "",
+                type: "TASK",
+                status: "TODO",
+                priority: "MEDIUM",
+                assigneeId: "",
+                due_date: "",
+            })
+            toast.success(data.message)
+            dispatch(addTask(data.task))
+        }catch(error){
+            toast.error(error?.response?.data?.message || error.message);
+
+        }finally{
+            setIsSubmitting(false)
+        }
 
 
     };
@@ -74,7 +110,9 @@ export default function CreateTaskDialog({ showCreateTask, setShowCreateTask, pr
                                 <option value="">Unassigned</option>
                                 {teamMembers.map((member) => (
                                     <option key={member?.user.id} value={member?.user.id}>
-                                        {member?.user.email}
+                                        {member?.user?.name?.trim() && member.user.name.trim().toLowerCase() !== "user"
+                                            ? member.user.name.trim()
+                                            : member?.user?.email || member?.user?.id}
                                     </option>
                                 ))}
                             </select>
@@ -95,7 +133,7 @@ export default function CreateTaskDialog({ showCreateTask, setShowCreateTask, pr
                         <label className="text-sm font-medium">Due Date</label>
                         <div className="flex items-center gap-2">
                             <CalendarIcon className="size-5 text-zinc-500 dark:text-zinc-400" />
-                            <input type="date" value={formData.due_date} onChange={(e) => setFormData({ ...formData, due_date: e.target.value })} min={new Date().toISOString().split('T')[0]} className="w-full rounded dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 px-3 py-2 text-zinc-900 dark:text-zinc-200 text-sm mt-1" />
+                            <input type="date" value={formData.due_date} onChange={(e) => setFormData({ ...formData, due_date: e.target.value })} min={new Date().toISOString().split('T')[0]} className="w-full rounded dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 px-3 py-2 text-zinc-900 dark:text-zinc-200 text-sm mt-1" required />
                         </div>
                         {formData.due_date && (
                             <p className="text-xs text-zinc-500 dark:text-zinc-400">

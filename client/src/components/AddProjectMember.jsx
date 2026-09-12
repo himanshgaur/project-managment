@@ -1,7 +1,11 @@
 import { useState } from "react";
 import { Mail, UserPlus } from "lucide-react";
-import { useSelector } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
 import { useSearchParams } from "react-router-dom";
+import { useAuth } from "@clerk/react";
+import { fetchWorkspaces } from "../features/workspaceSlice";
+import toast from "react-hot-toast";
+import api from "../configs/api";
 
 const AddProjectMember = ({ isDialogOpen, setIsDialogOpen }) => {
 
@@ -9,16 +13,35 @@ const AddProjectMember = ({ isDialogOpen, setIsDialogOpen }) => {
 
     const id = searchParams.get('id');
 
+    const {getToken} = useAuth();
+    const dispatch = useDispatch();
+
     const currentWorkspace = useSelector((state) => state.workspace?.currentWorkspace || null);
 
     const project = currentWorkspace?.projects.find((p) => p.id === id);
-    const projectMembersEmails = project?.members.map((member) => member.user.email);
+    const projectMembersEmails = project?.members?.map((member) => member.user.email) || [];
 
     const [email, setEmail] = useState('');
     const [isAdding, setIsAdding] = useState(false);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+        setIsAdding(true)
+        try{
+            if (!project) {
+                throw new Error("Project not found");
+            }
+
+            await api.post(`/api/projects/${project.id}/addMember`, {email},{headers: {Authorization: `Bearer ${await getToken()}`}})
+            toast.success("Added to project successfully")
+            dispatch(fetchWorkspaces({getToken}))
+        }catch(error){
+            toast.error(error.response?.data?.message || error.message)
+
+
+        }finally{
+            setIsAdding(false)
+        }
         
     };
 
@@ -54,7 +77,7 @@ const AddProjectMember = ({ isDialogOpen, setIsDialogOpen }) => {
                                 {currentWorkspace?.members
                                     .filter((member) => !projectMembersEmails.includes(member.user.email))
                                     .map((member) => (
-                                        <option key={member.user.id} value={member.user.email}> {member.user.email} </option>
+                                        <option key={member.user.id} value={member.user.email}> {member.user.name || member.user.email} </option>
                                     ))}
                             </select>
                         </div>

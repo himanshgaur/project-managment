@@ -12,6 +12,10 @@ export const addComment = async (req, res) => {
         const task = await prisma.task.findUnique({
             where: {id : taskId},
         })
+
+        if (!task) {
+            return res.status(404).json({message: "Task not found"});
+        }
         
         const project = await prisma.project.findUnique({
             where: {id: task.projectId},
@@ -23,7 +27,7 @@ export const addComment = async (req, res) => {
         }
 
         const member = project.members.find((member) => member.userId === userId);
-        if(!user){
+        if(!member && project.team_lead !== userId){
             return res.status(403).json({message: "you are not member of this project"});
         }
         const comment = await prisma.comment.create({
@@ -37,7 +41,7 @@ export const addComment = async (req, res) => {
 
     }catch(error){
         console.log(error);
-        res.status(500).json({messsage: error.code || error.message});
+        res.status(500).json({message: error.code || error.message});
     }
 }
 
@@ -45,10 +49,21 @@ export const addComment = async (req, res) => {
 
 export const getTaskComments = async (req, res) =>  {
     try{
+        const { userId } = await req.auth();
         const {taskId} = req.params;
-        const comments = await prisma.comment.findMany({
-            where: {taskId} , include: {user:true}
+        const task = await prisma.task.findUnique({
+            where: { id: taskId },
+            include: { project: { include: { members: true } } },
         })
+
+        if (!task) return res.status(404).json({message: "Task not found"});
+        if (!task.project.members.some((member) => member.userId === userId) && task.project.team_lead !== userId) {
+            return res.status(403).json({message: "You are not a member of this project"});
+        }
+
+        const comments = await prisma.comment.findMany({
+            where: {taskId}, include: {user:true}
+        });
         res.json({comments})
     } catch(error){
         console.log(error);

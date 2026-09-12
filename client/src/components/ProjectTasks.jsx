@@ -5,6 +5,8 @@ import { useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { deleteTask, updateTask } from "../features/workspaceSlice";
 import { Bug, CalendarIcon, GitCommit, MessageSquare, Square, Trash, XIcon, Zap } from "lucide-react";
+import { useAuth } from "@clerk/react";
+import api from "../configs/api";
 
 const typeIcons = {
     BUG: { icon: Bug, color: "text-red-600 dark:text-red-400" },
@@ -20,7 +22,9 @@ const priorityTexts = {
     HIGH: { background: "bg-emerald-100 dark:bg-emerald-950", prioritycolor: "text-emerald-600 dark:text-emerald-400" },
 };
 
-const ProjectTasks = ({ tasks }) => {
+const ProjectTasks = ({ tasks, members = [] }) => {
+
+    const {getToken} = useAuth();
     const dispatch = useDispatch();
     const navigate = useNavigate();
     const [selectedTasks, setSelectedTasks] = useState([]);
@@ -32,9 +36,20 @@ const ProjectTasks = ({ tasks }) => {
         assignee: "",
     });
 
+    const getAssigneeLabel = (user) =>
+        user?.name && user.name !== "User" ? user.name : user?.email || "Unknown user";
+
     const assigneeList = useMemo(
-        () => Array.from(new Set(tasks.map((t) => t.assignee?.name).filter(Boolean))),
-        [tasks]
+        () => Array.from(
+            new Set(
+                [
+                    ...members.map((member) => getAssigneeLabel(member.user)),
+                    ...tasks.map((task) => getAssigneeLabel(task.assignee)),
+                ]
+                    .filter(Boolean)
+            )
+        ),
+        [members, tasks]
     );
 
     const filteredTasks = useMemo(() => {
@@ -44,7 +59,7 @@ const ProjectTasks = ({ tasks }) => {
                 (!status || task.status === status) &&
                 (!type || task.type === type) &&
                 (!priority || task.priority === priority) &&
-                (!assignee || task.assignee?.name === assignee)
+                (!assignee || getAssigneeLabel(task.assignee) === assignee)
             );
         });
     }, [filters, tasks]);
@@ -57,9 +72,11 @@ const ProjectTasks = ({ tasks }) => {
     const handleStatusChange = async (taskId, newStatus) => {
         try {
             toast.loading("Updating status...");
+            const token = await getToken();
 
-            //  Simulate API call
-            await new Promise((resolve) => setTimeout(resolve, 2000));
+            
+            await api.put(`/api/tasks/${taskId}`, {status: newStatus}, {headers :{Authorization : `Bearer ${token}`}})
+
 
             let updatedTask = structuredClone(tasks.find((t) => t.id === taskId));
             updatedTask.status = newStatus;
@@ -77,11 +94,12 @@ const ProjectTasks = ({ tasks }) => {
         try {
             const confirm = window.confirm("Are you sure you want to delete the selected tasks?");
             if (!confirm) return;
+            const token = await getToken();
 
             toast.loading("Deleting tasks...");
 
-            //  Simulate API call
-            await new Promise((resolve) => setTimeout(resolve, 2000));
+            await api.post("/api/tasks/delete", {taskIds: selectedTasks}, {headers: {Authorization: `Bearer ${token}`}})
+
 
             dispatch(deleteTask(selectedTasks));
 
@@ -156,7 +174,7 @@ const ProjectTasks = ({ tasks }) => {
                             <thead className="text-xs uppercase dark:bg-zinc-800/70 text-zinc-500 dark:text-zinc-400 ">
                                 <tr>
                                     <th className="pl-2 pr-1">
-                                        <input onChange={() => selectedTasks.length > 1 ? setSelectedTasks([]) : setSelectedTasks(tasks.map((t) => t.id))} checked={selectedTasks.length === tasks.length} type="checkbox" className="size-3 accent-zinc-600 dark:accent-zinc-500" />
+                                        <input onChange={() => selectedTasks.length === tasks.length ? setSelectedTasks([]) : setSelectedTasks(tasks.map((t) => t.id))} checked={tasks.length > 0 && selectedTasks.length === tasks.length} type="checkbox" className="size-3 accent-zinc-600 dark:accent-zinc-500" />
                                     </th>
                                     <th className="px-4 pl-0 py-3">Title</th>
                                     <th className="px-4 py-3">Type</th>
@@ -199,7 +217,7 @@ const ProjectTasks = ({ tasks }) => {
                                                 <td className="px-4 py-2">
                                                     <div className="flex items-center gap-2">
                                                         <img src={task.assignee?.image} className="size-5 rounded-full" alt="avatar" />
-                                                        {task.assignee?.name || "-"}
+                                                        {task.assignee?.name || task.assignee?.email || "-"}
                                                     </div>
                                                 </td>
                                                 <td className="px-4 py-2">
@@ -258,7 +276,7 @@ const ProjectTasks = ({ tasks }) => {
 
                                         <div className="flex items-center gap-2 text-sm text-zinc-700 dark:text-zinc-300">
                                             <img src={task.assignee?.image} className="size-5 rounded-full" alt="avatar" />
-                                            {task.assignee?.name || "-"}
+                                            {task.assignee?.name || task.assignee?.email || "-"}
                                         </div>
 
                                         <div className="flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-400">

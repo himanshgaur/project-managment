@@ -1,10 +1,62 @@
 import prisma from "../configs/prisma.js";
+import { clerkClient } from "@clerk/express";
 
 
 //Get all workspaces
 export const getUserWorkspaces = async (req, res) => {
   try {
-    const {userId} =  await req.auth();
+        const { userId, orgId, orgRole } = await req.auth();
+
+        // The membership webhook may be delayed or unavailable during local
+        // development. Reconcile the active Clerk organization on first request
+        // so invited users do not remain on the loading screen forever.
+        if (userId && orgId) {
+            const clerkUser = await clerkClient.users.getUser(userId);
+            const email = clerkUser.emailAddresses[0]?.emailAddress || `${userId}@clerk.local`;
+            const name = `${clerkUser.firstName || ""} ${clerkUser.lastName || ""}`.trim() || "User";
+
+            await prisma.user.upsert({
+                where: { id: userId },
+                update: { email, name, image: clerkUser.imageUrl || "" },
+                create: { id: userId, email, name, image: clerkUser.imageUrl || "" },
+            });
+
+            // The Clerk organization webhook may not reach a local Inngest
+            // server. Reconcile it here so a newly created organization can
+            // immediately open the dashboard.
+            const organization = await clerkClient.organizations.getOrganization({
+                organizationId: orgId,
+            });
+
+            await prisma.workspace.upsert({
+                where: { id: orgId },
+                update: {
+                    name: organization.name,
+                    slug: organization.slug || organization.id,
+                    image_url: organization.imageUrl || "",
+                },
+                create: {
+                    id: organization.id,
+                    name: organization.name,
+                    slug: organization.slug || organization.id,
+                    ownerId: organization.createdBy,
+                    image_url: organization.imageUrl || "",
+                },
+            });
+
+            await prisma.workspaceMember.upsert({
+                where: {
+                    userId_workspaceId: { userId, workspaceId: orgId },
+                },
+                update: {},
+                create: {
+                    userId,
+                    workspaceId: orgId,
+                    role: orgRole === "org:admin" ? "ADMIN" : "MEMBER",
+                },
+            });
+        }
+
     const workspaces = await prisma.workspace.findMany({
       where: {
         members: {
@@ -25,6 +77,44 @@ export const getUserWorkspaces = async (req, res) => {
 
             }
     });
+
+    const userIds = new Set();
+    workspaces.forEach((workspace) => {
+        workspace.members.forEach((member) => userIds.add(member.userId));
+        workspace.projects.forEach((project) => {
+            project.members.forEach((member) => userIds.add(member.userId));
+            project.tasks.forEach((task) => userIds.add(task.assigneeId));
+        });
+        userIds.add(workspace.ownerId);
+    });
+
+    const clerkUsers = new Map(await Promise.all(
+        [...userIds].map(async (id) => {
+            try {
+                const clerkUser = await clerkClient.users.getUser(id);
+                const email = clerkUser.emailAddresses[0]?.emailAddress || "";
+                const name = `${clerkUser.firstName || ""} ${clerkUser.lastName || ""}`.trim();
+                return [id, { email, name: name || email, image: clerkUser.imageUrl || "" }];
+            } catch {
+                return [id, null];
+            }
+        })
+    ));
+
+    workspaces.forEach((workspace) => {
+        const updateUser = (user) => {
+            const clerkUser = clerkUsers.get(user.id);
+            if (clerkUser) Object.assign(user, clerkUser);
+        };
+
+        updateUser(workspace.owner);
+        workspace.members.forEach((member) => updateUser(member.user));
+        workspace.projects.forEach((project) => {
+            project.members.forEach((member) => updateUser(member.user));
+            project.tasks.forEach((task) => updateUser(task.assignee));
+        });
+    });
+
     res.json({workspaces});
   } catch (error) {
     console.error(error);

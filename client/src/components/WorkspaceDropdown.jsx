@@ -101,11 +101,10 @@
 // export default WorkspaceDropdown;
 
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { ChevronDown, Check, Plus } from "lucide-react";
 import { useDispatch, useSelector } from "react-redux";
 import { setCurrentWorkspace } from "../features/workspaceSlice";
-import { useNavigate } from "react-router-dom";
 import { useClerk, useOrganizationList } from "@clerk/react";
 
 function WorkspaceDropdown() {
@@ -128,7 +127,20 @@ function WorkspaceDropdown() {
     const dropdownRef = useRef(null);
 
     const dispatch = useDispatch();
-    const navigate = useNavigate();
+
+    const workspaceIds = useMemo(
+        () => new Set(
+            userMemberships?.data?.map(({ organization }) => organization?.id) || []
+        ),
+        [userMemberships?.data]
+    );
+
+    const visibleWorkspaces = useMemo(
+        () => isLoaded
+            ? workspaces.filter((workspace) => workspaceIds.has(workspace.id))
+            : workspaces,
+        [isLoaded, workspaces, workspaceIds]
+    );
 
     const onSelectWorkspace = async (organizationId) => {
         try {
@@ -141,8 +153,6 @@ function WorkspaceDropdown() {
             dispatch(setCurrentWorkspace(organizationId));
 
             setIsOpen(false);
-
-            navigate("/");
         } catch (error) {
             console.error("Failed to switch workspace:", error);
         }
@@ -169,18 +179,14 @@ function WorkspaceDropdown() {
         };
     }, []);
 
-    // Set active organization when current workspace changes
     useEffect(() => {
-        if (
-            currentWorkspace &&
-            isLoaded &&
-            setActive
-        ) {
-            setActive({
-                organization: currentWorkspace.id,
-            });
+        if (!currentWorkspace || !isLoaded) return;
+
+        if (!workspaceIds.has(currentWorkspace.id)) {
+            const nextWorkspace = visibleWorkspaces[0];
+            dispatch(setCurrentWorkspace(nextWorkspace?.id || null));
         }
-    }, [currentWorkspace, isLoaded, setActive]);
+    }, [currentWorkspace, dispatch, isLoaded, visibleWorkspaces, workspaceIds]);
 
     return (
         <div
@@ -188,7 +194,12 @@ function WorkspaceDropdown() {
             ref={dropdownRef}
         >
             <button
-                onClick={() => setIsOpen((prev) => !prev)}
+                onClick={() => {
+                    setIsOpen((prev) => !prev);
+                    if (!isOpen) {
+                        userMemberships?.revalidate?.();
+                    }
+                }}
                 className="w-full flex items-center justify-between p-3 h-auto text-left rounded hover:bg-gray-100 dark:hover:bg-zinc-800"
             >
                 <div className="flex items-center gap-3">
@@ -205,8 +216,8 @@ function WorkspaceDropdown() {
                         </p>
 
                         <p className="text-xs text-gray-500 dark:text-zinc-400 truncate">
-                            {workspaces.length} workspace
-                            {workspaces.length !== 1 ? "s" : ""}
+                            {visibleWorkspaces.length} workspace
+                            {visibleWorkspaces.length !== 1 ? "s" : ""}
                         </p>
                     </div>
                 </div>
@@ -223,10 +234,11 @@ function WorkspaceDropdown() {
                             Workspaces
                         </p>
 
-                        {isLoaded &&
-                            userMemberships?.data?.map((membership) => {
-                                const organization =
-                                    membership.organization;
+                        {isLoaded && visibleWorkspaces.map((workspace) => {
+                                const organization = userMemberships.data.find(
+                                    (membership) =>
+                                        membership.organization?.id === workspace.id
+                                )?.organization;
 
                                 if (!organization) return null;
 
